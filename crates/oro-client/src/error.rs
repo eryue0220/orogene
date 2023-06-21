@@ -41,6 +41,10 @@ pub enum OroClientError {
     #[error(transparent)]
     #[diagnostic(code(oro_client::request_middleware_error), url(docsrs))]
     RequestMiddlewareError(#[from] reqwest_middleware::Error),
+
+    #[error("Unsupport platform")]
+    #[diagnostic(code(oror_client::unsupport_platform), url(docsrs))]
+    UnsupportPlatform,
 }
 
 impl OroClientError {

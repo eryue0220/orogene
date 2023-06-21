@@ -57,6 +57,7 @@ tracing-appender = { workspace = true }
 tracing-indicatif = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
+sysinfo = { workspace = true }
 
 [workspace]
 members = [".", "crates/*"]
@@ -146,6 +147,7 @@ wasm-bindgen-futures = "0.4.34"
 wasm-streams = "0.2.3"
 which = "4.0.2"
 wiremock = "0.5.17"
+sysinfo = "0.29.2"
 
 # Config for 'cargo dist'
 [workspace.metadata.dist]
