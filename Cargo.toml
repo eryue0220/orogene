@@ -1,6 +1,6 @@
 [package]
 name = "orogene"
-version = "0.3.27"
+version = "0.3.33"
 description = "`node_modules/` package manager and utility toolkit."
 readme = "README.md"
 build = "build.rs"
@@ -15,15 +15,20 @@ rust-version.workspace = true
 [package.metadata.release]
 tag = true
 
+[package.metadata.wix]
+upgrade-guid = "C5FC7FE8-A6AB-4897-8B26-01220D1C3FAD"
+path-guid = "D7A7057F-9CE2-4FB0-A0CF-1293469361C5"
+
 [dependencies]
 # Workspace Deps
-nassun = { version = "=0.3.27", path = "./crates/nassun" }
-node-maintainer = { version = "=0.3.27", path = "./crates/node-maintainer" }
-oro-client = { version = "=0.3.27", path = "./crates/oro-client" }
-oro-common = { version = "=0.3.27", path = "./crates/oro-common" }
-oro-config = { version = "=0.3.27", path = "./crates/oro-config" }
-oro-package-spec = { version = "=0.3.27", path = "./crates/oro-package-spec" }
-oro-pretty-json = { version = "=0.3.27", path = "./crates/oro-pretty-json" }
+nassun = { version = "=0.3.33", path = "./crates/nassun" }
+node-maintainer = { version = "=0.3.33", path = "./crates/node-maintainer" }
+oro-client = { version = "=0.3.33", path = "./crates/oro-client" }
+oro-common = { version = "=0.3.33", path = "./crates/oro-common" }
+oro-config = { version = "=0.3.33", path = "./crates/oro-config" }
+oro-npm-account = { version = "=0.3.33", path = "./crates/oro-npm-account" }
+oro-package-spec = { version = "=0.3.33", path = "./crates/oro-package-spec" }
+oro-pretty-json = { version = "=0.3.33", path = "./crates/oro-pretty-json" }
 
 # Regular deps
 async-std = { workspace = true, features = [
@@ -36,7 +41,7 @@ chrono = { workspace = true }
 chrono-humanize = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 colored = { workspace = true }
-dialoguer = { workspace = true, default_features = false }
+dialoguer = { workspace = true, default-features = false }
 directories = { workspace = true }
 humansize = { workspace = true }
 indicatif = { workspace = true }
@@ -70,11 +75,13 @@ homepage = "https://orogene.dev"
 rust-version = "1.67.1"
 
 [workspace.dependencies]
+anyhow = "1.0.75"
 async-compression = "0.3.5"
 async-process = "1.0.1"
 async-std = "1.12.0"
 async-trait = "0.1.64"
 backon = "0.4.0"
+base64 = "0.21.2"
 bincode = "1.3.1"
 bytecount = "0.6.0"
 cacache = "11.6.0"
@@ -82,12 +89,12 @@ chrono = "0.4.23"
 chrono-humanize = "0.0.11"
 clap = "4.2.1"
 colored = "2.0.0"
-config = "0.13.2"
+config = { version = "0.13.2", default-features = false }
 console_error_panic_hook = "0.1.7"
 darling = "0.10.2"
 dashmap = "4.0.0-rc6"
 derive_builder = "0.11.2"
-dialoguer = "0.10.4"
+dialoguer = { version = "0.10.4", default-features = false }
 directories = "4.0.1"
 dunce = "1.0.3"
 flate2 = "1.0.25"
@@ -109,17 +116,19 @@ mockito = "1.0.0"
 node-semver = "2.1.0"
 nom = "7.1.3"
 once_cell = "1.17.1"
+open = "5.0.0"
 pathdiff = "0.2.1"
 percent-encoding = "2.1.0"
+petgraph = { version = "0.6.2", default-features = false }
 poloto = "17.1.0"
 pretty_assertions = "1.3.0"
 proc-macro2 = "1.0.18"
 quote = "1.0.7"
-rand = "0.8.5"
-reflink = "0.1.3"
+rand = { version = "0.8.5", default-features = false }
+reflink-copy = "0.1.5"
 regex = "1.7.2"
 reqwest = "0.11.14"
-reqwest-middleware = "0.2.0"
+reqwest-middleware = "=0.2.2"
 resvg = "0.29.0"
 rkyv = "0.7.41"
 sentry = "0.31.0"
@@ -130,6 +139,7 @@ ssri = "9.0.0"
 supports-unicode = "2.0.0"
 syn = "1.0.33"
 tar = "0.4.38"
+task-local-extensions = "0.1.4"
 tempfile = "3.3.0"
 term_grid = "0.1.7"
 term_size = "0.3.2"
@@ -139,12 +149,13 @@ tracing = "0.1.37"
 tracing-appender = "0.2.2"
 tracing-indicatif = "0.3.0"
 tracing-subscriber = "0.3.16"
-tsify = "0.4.3"
+tsify = { version = "0.4.3", default-features = false }
+unicase = "2.6.0"
 url = "2.3.1"
 walkdir = "2.3.2"
 wasm-bindgen = "0.2.84"
 wasm-bindgen-futures = "0.4.34"
-wasm-streams = "0.2.3"
+wasm-streams = "0.3.0"
 which = "4.0.2"
 wiremock = "0.5.17"
 reqwest-retry = "0.2.2"
@@ -154,24 +165,23 @@ sysinfo = "0.29.2"
 # Config for 'cargo dist'
 [workspace.metadata.dist]
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.0.7"
+cargo-dist-version = "0.3.1"
 # The preferred Rust toolchain to use in CI (rustup toolchain syntax)
-rust-toolchain-version = "1.67.1"
-# CI backends to support (see 'cargo dist generate-ci')
+rust-toolchain-version = "1.72.1"
+# CI backends to support
 ci = ["github"]
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = [
-    "x86_64-unknown-linux-gnu",
-    "x86_64-apple-darwin",
-    "x86_64-pc-windows-msvc",
-    "aarch64-apple-darwin",
-]
+targets = ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"]
 # The installers to generate for each app
-installers = ["shell", "powershell", "npm"]
+installers = ["shell", "powershell", "npm", "msi"]
 # The archive format to use for windows builds (defaults .zip)
 windows-archive = ".tar.gz"
 # The archive format to use for non-windows builds (defaults .tar.xz)
 unix-archive = ".tar.gz"
+# Publish jobs to run in CI
+pr-run-mode = "plan"
+# Skip checking whether the specified configuration files are up to date
+allow-dirty = ["msi"]
 
 [build-dependencies]
 embed-resource = "1.3.3"

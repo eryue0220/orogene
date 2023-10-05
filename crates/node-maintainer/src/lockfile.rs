@@ -151,7 +151,7 @@ impl From<LockfileNode> for CorgiManifest {
             dev_dependencies: value.dev_dependencies,
             peer_dependencies: value.peer_dependencies,
             optional_dependencies: value.optional_dependencies,
-            bundled_dependencies: Vec::new(),
+            bundled_dependencies: None,
         }
     }
 }
@@ -166,8 +166,9 @@ impl LockfileNode {
                 format!("{}@{version}", self.name)
             }
             (Some(resolved), _) => format!("{}@{resolved}", self.name),
+            (_, Some(version)) => format!("{}@{version}", self.name),
             _ => {
-                // We ignore this node because it's incomplete and we can't trust it anymore.
+                // Nothing we can do here, we don't have enough information to resolve the package.
                 return Ok(None);
             }
         };

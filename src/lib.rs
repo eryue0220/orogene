@@ -12,7 +12,10 @@
 //! `node_modules/`, such as bundlers, CLI tools, and Node.js-based
 //! applications. It's fast, robust, and meant to be easily integrated into
 //! your workflows such that you never have to worry about whether your
-//! `node_modules/` is up to date.
+//! `node_modules/` is up to date. It even deduplicates your dependencies
+//! using a central store, and improves the experience using Copy-on-Write on
+//! supported filesystems, greatly reducing disk usage and speeding up
+//! loading.
 //!
 //! > *Note*: Orogene is still under heavy development and may not yet be
 //! > suitable for production use. It is missing some features that you might
@@ -40,7 +43,13 @@
 //! $ cargo install orogene
 //! ```
 //!
-//! You can also find install scripts and archive downloads in [the latest
+//! Homebrew:
+//! ```sh
+//! $ brew install orogene
+//! ```
+//!
+//! You can also find install scripts, windows MSI installers, and archive
+//! downloads in [the latest
 //! release](https://github.com/orogene/orogene/releases/latest).
 //!
 //! ## Usage
@@ -73,9 +82,8 @@
 //!
 //! [Warm cache comparison]:
 //!     https://orogene.dev/assets/benchmarks-warm-cache.png
-//! [the benchmarks page]: https://orogene.dev/BENCHMARKS.html
-//! [our contribution guide]:
-//!     https://github.com/orogene/orogene/blob/main/CONTRIBUTING.md
+//! [the benchmarks page]: https://orogene.dev/BENCHMARKS
+//! [our contribution guide]: https://orogene.dev/CONTRIBUTING/
 //! [Apache 2.0 License]: https://github.com/orogene/orogene/blob/main/LICENSE
 
 use std::{
@@ -110,6 +118,7 @@ use commands::OroCommand;
 pub use error::OroError;
 
 mod apply_args;
+mod client_args;
 mod commands;
 mod error;
 mod nassun_args;
@@ -161,15 +170,17 @@ pub struct Orogene {
     /// provide credentials for multiple registries at a time, and different
     /// credential fields for a registry.
     ///
-    /// The syntax is `--credentials my.registry.com:username=foo
-    /// --credentials my.registry.com:password=sekrit`.
+    /// The syntax is `--auth {my.registry.com}token=deadbeef
+    /// --auth {my.registry.com}username=myuser`.
+    ///
+    /// Valid auth fields are: `token`, `username`, `password`, and `legacy-auth`.
     #[arg(
         help_heading = "Global Options",
         global = true,
         long,
         value_parser = parse_nested_key_value::<String, String, String>
     )]
-    credentials: Vec<(String, String, String)>,
+    auth: Vec<(String, String, String)>,
 
     /// Location of disk cache.
     ///
@@ -289,14 +300,14 @@ pub struct Orogene {
     )]
     no_proxy_domain: Option<String>,
 
-    /// Package will retry when network failed.
+    /// How many times to retry failed network operations.
     #[arg(
         help_heading = "Global Options",
         global = true,
         long,
         default_value_t = 2
     )]
-    fetch_retries: u32,
+    retries: u32,
 }
 
 impl Orogene {
@@ -502,8 +513,12 @@ impl Orogene {
         // We skip first-time-setup operations in CI entirely.
         if self.first_time && !is_ci::cached() {
             tracing::info!("Performing first-time setup...");
-            if let Some(dirs) = ProjectDirs::from("", "", "orogene") {
-                let config_dir = dirs.config_dir();
+            if let Some(config_path) = self
+                .config
+                .clone()
+                .or_else(|| ProjectDirs::from("", "", "orogene").map(|p| p.config_dir().to_owned()))
+            {
+                let config_dir = config_path.parent().expect("must have parent");
                 if !config_dir.exists() {
                     std::fs::create_dir_all(config_dir).unwrap();
                 }
@@ -617,9 +632,7 @@ impl Orogene {
                     })),
                     ..Default::default()
                 }
-                .add_integration(
-                    sentry::integrations::backtrace::AttachStacktraceIntegration::default(),
-                )
+                .add_integration(sentry::integrations::backtrace::AttachStacktraceIntegration)
                 .add_integration(
                     sentry::integrations::panic::PanicIntegration::default().add_extractor(
                         move |info: &PanicInfo| {
@@ -658,9 +671,7 @@ impl Orogene {
                     ),
                 )
                 .add_integration(sentry::integrations::contexts::ContextIntegration::new())
-                .add_integration(
-                    sentry::integrations::backtrace::ProcessStacktraceIntegration::default(),
-                ),
+                .add_integration(sentry::integrations::backtrace::ProcessStacktraceIntegration),
             );
             Ok(Some(ret))
         } else {
@@ -692,30 +703,44 @@ impl Orogene {
         let _logging_guard = oro.setup_logging(log_file.as_deref())?;
         oro.first_time_setup()?;
         let _telemetry_guard = oro.setup_telemetry(log_file.clone())?;
-        oro.execute().await.map_err(|e| {
-            // We toss this in a debug so execution errors show up in our
-            // debug logs. Unfortunately, we can't do the same for other
-            // errors in this method because they all happen before the debug
-            // log is even set up.
-            tracing::debug!("{e:?}");
-            if let Some(log_file) = log_file.as_deref() {
-                tracing::warn!("A debug log was written to {}", log_file.display());
-                sentry::configure_scope(|s| {
-                    s.add_attachment(sentry::protocol::Attachment {
-                        filename: log_file
-                            .file_name()
-                            .map(|f| f.to_string_lossy().to_string())
-                            .unwrap_or_else(|| "oro-debug.log".into()),
-                        content_type: Some("text/plain".into()),
-                        buffer: std::fs::read(log_file).unwrap_or_default(),
-                        ty: None,
+        let do_term_progress = !oro.quiet && oro.progress;
+        if do_term_progress {
+            indet_term_progress();
+        }
+        oro.execute()
+            .await
+            .map(|_| {
+                if do_term_progress {
+                    reset_term_progress()
+                }
+            })
+            .map_err(|e| {
+                // We toss this in a debug so execution errors show up in our
+                // debug logs. Unfortunately, we can't do the same for other
+                // errors in this method because they all happen before the debug
+                // log is even set up.
+                if do_term_progress {
+                    reset_term_progress();
+                }
+                tracing::debug!("{e:?}");
+                if let Some(log_file) = log_file.as_deref() {
+                    tracing::warn!("A debug log was written to {}", log_file.display());
+                    sentry::configure_scope(|s| {
+                        s.add_attachment(sentry::protocol::Attachment {
+                            filename: log_file
+                                .file_name()
+                                .map(|f| f.to_string_lossy().to_string())
+                                .unwrap_or_else(|| "oro-debug.log".into()),
+                            content_type: Some("text/plain".into()),
+                            buffer: std::fs::read(log_file).unwrap_or_default(),
+                            ty: None,
+                        });
                     });
-                });
-            }
-            let dyn_err: &dyn std::error::Error = e.as_ref();
-            sentry::capture_error(dyn_err);
-            e
-        })?;
+                }
+                let dyn_err: &dyn std::error::Error = e.as_ref();
+                sentry::capture_error(dyn_err);
+                e
+            })?;
         tracing::debug!("Ran in {}s", start.elapsed().as_millis() as f32 / 1000.0);
         Ok(())
     }
@@ -799,16 +824,19 @@ where
     V: std::str::FromStr,
     V::Err: std::error::Error + Send + Sync + 'static,
 {
-    let colon_pos = s
-        .find(':')
-        .ok_or_else(|| format!("invalid TOP_KEY:NESTED_KEY=VALUE entry: no `:` found in `{s}`",))?;
-    let eq_pos = s
-        .find('=')
-        .ok_or_else(|| format!("invalid TOP_KEY:NESTED_KEY=VALUE entry: no `=` found in `{s}`"))?;
+    let open_pos = s.find('{').ok_or_else(|| {
+        format!("invalid {{TOP_KEY}}NESTED_KEY=VALUE entry: no `{{` found in `{s}`",)
+    })?;
+    let close_pos = s.find('}').ok_or_else(|| {
+        format!("invalid {{TOP_KEY}}NESTED_KEY=VALUE entry: no `}}` found in `{s}`",)
+    })?;
+    let eq_pos = s.find('=').ok_or_else(|| {
+        format!("invalid {{TOP_KEY}}NESTED_KEY=VALUE entry: no `=` found in `{s}`")
+    })?;
 
     Ok((
-        s[..colon_pos].parse()?,
-        s[colon_pos + 1..eq_pos].parse()?,
+        s[open_pos + 1..close_pos].parse()?,
+        s[close_pos + 1..eq_pos].parse()?,
         s[eq_pos + 1..].parse()?,
     ))
 }
@@ -818,6 +846,10 @@ pub enum OroCmd {
     Add(commands::add::AddCmd),
 
     Apply(commands::apply::ApplyCmd),
+
+    Login(commands::login::LoginCmd),
+
+    Logout(commands::logout::LogoutCmd),
 
     Ping(commands::ping::PingCmd),
 
@@ -838,6 +870,8 @@ impl OroCommand for Orogene {
         match self.subcommand {
             OroCmd::Add(cmd) => cmd.execute().await,
             OroCmd::Apply(cmd) => cmd.execute().await,
+            OroCmd::Login(cmd) => cmd.execute().await,
+            OroCmd::Logout(cmd) => cmd.execute().await,
             OroCmd::Ping(cmd) => cmd.execute().await,
             OroCmd::Reapply(cmd) => cmd.execute().await,
             OroCmd::Remove(cmd) => cmd.execute().await,
@@ -928,6 +962,22 @@ impl OroCommand for HelpMarkdownCmd {
 
             return Ok(());
         }
-        Err(miette::miette!("Command not found: {self.command_name}"))
+        Err(miette::miette!("Command not found: {}", self.command_name))
     }
 }
+
+fn indet_term_progress() {
+    if std::io::stderr().is_terminal() {
+        eprintln!("\u{1b}]9;4;3;0\u{1b}\\");
+    }
+}
+
+fn reset_term_progress() {
+    if std::io::stderr().is_terminal() {
+        eprintln!("\u{1b}]9;4;0;0\u{1b}\\");
+    }
+}
+
+// fn set_progress(progress: u32) {
+//     eprintln!("\u{1b}]9;4;3;{progress}\u{1b}\\");
+// }

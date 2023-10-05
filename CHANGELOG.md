@@ -1,4 +1,89 @@
 # Orogene Release Changelog
+<a name="0.3.33"></a>
+## 0.3.33 (2023-10-02)
+
+### Features
+
+* **terminal:** display indeterminate progress while orogene is running ([d4f3e845](https://github.com/orogene/orogene/commit/d4f3e8450afdc5cc5481daeb9477efd46153f066))
+* **release:** automatically bump official brew formula on release ([deceec38](https://github.com/orogene/orogene/commit/deceec38b33f8b6b327bf10f00105a0531ce70db))
+
+### Bug Fixes
+
+* **manifest:** handle boolean bundledDependencies values ([d6c16a44](https://github.com/orogene/orogene/commit/d6c16a445fd7f3a58bf66a61c58048de2062aef8))
+* **fmt:** cargo fmt --all ([6fd8b279](https://github.com/orogene/orogene/commit/6fd8b2792922898862cbcae5e0b9b45ff2aab4b2))
+* **bin:** fix bin linking for the isolated linker and fix cmd shims ([8b58caba](https://github.com/orogene/orogene/commit/8b58caba8e34bb031fd8f4e37891c5d136ea8ace))
+* **docs:** fix broken links ([e182ce76](https://github.com/orogene/orogene/commit/e182ce764a8c2952c1995b334e6d0a3874d0b129))
+* **terminal:** don't print out terminal progress codes unless stderr is a terminal ([1228ebea](https://github.com/orogene/orogene/commit/1228ebea3d4612b45c9caa30c7536d0032fa0072))
+
+<a name="0.3.32"></a>
+## 0.3.32 (2023-09-30)
+
+### Features
+
+* **dist:** automatically publish to a homebrew tap ([023ebcca](https://github.com/orogene/orogene/commit/023ebcca7d2b859b5c798535eaef16556f909341))
+
+### Bug Fixes
+
+* **cache:** cache recovery was working off JSON metadata, not new rkyv-based one ([7c566287](https://github.com/orogene/orogene/commit/7c56628731581a225890946aa6b292f0cf6f3ec9))
+* **unsafe:** use safe version of method that verifies data. No perf impact noticeable ([1a6b54ac](https://github.com/orogene/orogene/commit/1a6b54ac34c9b03ab1eab069d464c5475fa2adeb))
+* **resolver:** fix issue with aliases not being handled properly ([85d31713](https://github.com/orogene/orogene/commit/85d3171300375ae3799294f3ff759ad947aa8443))
+* **resolver:** node paths should use their fs name ([544639b7](https://github.com/orogene/orogene/commit/544639b7685a2738d1c2999b1ee10eb125236d23))
+* **resolver:** go ahead and try to resolve if we just have a version ([8d04d84b](https://github.com/orogene/orogene/commit/8d04d84b245ccd4599964c445c58193edf089664))
+
+### Documentation
+
+* **build:** document build requirements ([16391bec](https://github.com/orogene/orogene/commit/16391becd01f9236fc22207faef38e94cfaa6e60))
+
+<a name="0.3.31"></a>
+## 0.3.31 (2023-09-28)
+
+### Bug Fixes
+
+* **dist:** temporarily allow-dirty and remove license stuff (#293) ([39685826](https://github.com/orogene/orogene/commit/3968582665fe35d1e01388df2030b88f1ab3c31c))
+
+<a name="0.3.30"></a>
+## 0.3.30 (2023-09-28)
+
+### Features
+
+* **docker:** add Dockerfile to compile orogene in a rust-debian-bookworm container (#288) ([10575974](https://github.com/orogene/orogene/commit/10575974ab7c2f6fcb2f862b281be14a9f7dbfdf))
+* **auth:** add registry authentication support ([0513019f](https://github.com/orogene/orogene/commit/0513019f87f6d047bbb38864baa193e3a3711569))
+* **login:** add support for all auth types to `oro login`, including direct `--token` passing ([cf709946](https://github.com/orogene/orogene/commit/cf70994664938ad45cb26c58d6b7c636c75e5fe8))
+
+### Bug Fixes
+
+* **auth:** glue login and authentication stuff, refactor, and make it all work ([23cf1bc8](https://github.com/orogene/orogene/commit/23cf1bc8b03a0c8b4f46a634ac2faff195dfd050))
+* **auth:** don't send auth to non-registry URLs ([e84a2576](https://github.com/orogene/orogene/commit/e84a25768d0328c407224416680bf09ac48490f2))
+* **misc:** get rid of annoying default-features warnings ([84f45865](https://github.com/orogene/orogene/commit/84f45865267b61bb2f783b5cbc7cbccb475a2e46))
+
+### Documentation
+
+* **auth:** Add authentication/authorization docs ([7ee6a742](https://github.com/orogene/orogene/commit/7ee6a742b4e5b7005b9e48a9a8acc1a8e02bae56))
+
+<a name="0.3.29"></a>
+## 0.3.29 (2023-09-27)
+
+### Features
+
+* **wasm:** publish NPM packages for nassun and node-maintainer as part of release ([f4f2ff22](https://github.com/orogene/orogene/commit/f4f2ff22cd6fec4bb5594f924c0773b9d92effa6))
+
+<a name="0.3.28"></a>
+## 0.3.28 (2023-09-27)
+
+### Features
+
+* **proxy:** support proxy configuration (#283) ([87facfe4](https://github.com/orogene/orogene/commit/87facfe44a14a61e94ee50c0a5f64724b065bdd8))
+* **login:** Add `oro login ` and `oro logout` commands (#290) ([39b3c6bd](https://github.com/orogene/orogene/commit/39b3c6bdfa5327276666ef86bf08cb02d3800a7d))
+* **dist:** bump cargo dist and add homebrew and msi artifacts ([218392d0](https://github.com/orogene/orogene/commit/218392d061fd234effb9fd12b5ba52e0d84c05c9))
+* **retry:** enable request retries on wasm, too ([1f25aa33](https://github.com/orogene/orogene/commit/1f25aa3383793e40e64d20939fb9702050b2ff24))
+* **wasm:** nicer TS types ([64d20dcc](https://github.com/orogene/orogene/commit/64d20dcc2361be9bc91894e1686e678ca827c836))
+
+### Bug Fixes
+
+* **proxy:** thread proxy settings through and tweak a few things along the way ([7d9b476e](https://github.com/orogene/orogene/commit/7d9b476ed2f732485b9f25655ed0598f0c2110aa))
+* **site:** modernize oranda config ([427f672f](https://github.com/orogene/orogene/commit/427f672f8ffa3da699c42612ea642eb824587de3))
+* **wasm:** get things working on wasm again! ([ec9e6e36](https://github.com/orogene/orogene/commit/ec9e6e36ce72719dacd15710ed7e3e3ae7498913))
+* **lib:** fix readme/license fields in oro-npm-account ([0842d2bf](https://github.com/orogene/orogene/commit/0842d2bf00e825cebda3fe110a07451ffcea5c72))
 
 <a name="0.3.27"></a>
 ## 0.3.27 (2023-05-21)

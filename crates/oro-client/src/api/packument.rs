@@ -41,6 +41,7 @@ impl OroClient {
         Ok(self
             .client
             .get(url.clone())
+            .header("X-Oro-Registry", self.registry.to_string())
             .header(
                 "Accept",
                 if use_corgi {
@@ -125,6 +126,59 @@ mod test {
         Mock::given(method("GET"))
             .and(path("some-pkg"))
             .and(header("accept", "application/json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&json!({
+                "versions": {
+                    "1.0.0": {
+                        "name": "some-pkg",
+                        "version": "1.0.0",
+                        "dependencies": {
+                            "some-dep": "1.0.0"
+                        }
+                    }
+                }
+            })))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        assert_eq!(
+            client.packument("some-pkg").await?,
+            Packument {
+                versions: hashmap!(
+                    "1.0.0".parse()? => VersionMetadata {
+                        manifest: Manifest {
+                            name: Some("some-pkg".to_string()),
+                            version: Some("1.0.0".parse()?),
+                            dependencies: IndexMap::from([
+                                ("some-dep".to_string(), "1.0.0".to_string())
+                            ]),
+                            ..Default::default()
+                        },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }
+        );
+
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn fetch_with_credentials() -> Result<()> {
+        let mock_server = MockServer::start().await;
+        let url: Url = mock_server.uri().parse().into_diagnostic()?;
+        let client = OroClient::builder()
+            .basic_auth(url.clone(), "testuser".into(), Some("testpassword".into()))
+            .registry(url)
+            .build();
+
+        Mock::given(method("GET"))
+            .and(path("some-pkg"))
+            .and(header("accept", "application/json"))
+            .and(header(
+                "authorization",
+                "Basic dGVzdHVzZXI6dGVzdHBhc3N3b3Jk",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&json!({
                 "versions": {
                     "1.0.0": {

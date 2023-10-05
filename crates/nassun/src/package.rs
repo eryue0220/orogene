@@ -189,14 +189,14 @@ impl Package {
                     .map_err(|e| NassunError::ExtractCacheError(e, None))?
                 {
                     let sri = sri.clone();
-                    // If extracting from the cache failed for some reason
-                    // (bad data, etc), then go ahead and do a network
-                    // extract.
                     match self
                         .extract_from_cache(dir, cache, entry, prefer_copy)
                         .await
                     {
                         Ok(_) => return Ok(sri),
+                        // If extracting from the cache failed for some reason
+                        // (bad data, etc), then go ahead and do a network
+                        // extract.
                         Err(e) => {
                             tracing::warn!("extracting package {:?} from cache failed, possily due to cache corruption: {e}", self.resolved());
                             if let Some(entry) =
@@ -246,18 +246,17 @@ impl Package {
         let name = self.name().to_owned();
         async_std::task::spawn_blocking(move || {
             let mut created = std::collections::HashSet::new();
-            let index = unsafe {
-                rkyv::util::archived_root::<TarballIndex>(
-                    entry
-                        .raw_metadata
-                        .as_ref()
-                        .ok_or_else(|| NassunError::CacheMissingIndexError(name))?,
-                )
-            };
+            let index = rkyv::check_archived_root::<TarballIndex>(
+                entry
+                    .raw_metadata
+                    .as_ref()
+                    .ok_or_else(|| NassunError::CacheMissingIndexError(name))?,
+            )
+            .map_err(|e| NassunError::DeserializeCacheError(e.to_string()))?;
             prefer_copy = index.should_copy || prefer_copy;
-            for (path, (sri, mode)) in index.files.iter() {
+            for (archived_path, (sri, mode)) in index.files.iter() {
                 let sri: Integrity = sri.parse()?;
-                let path = dir.join(&path[..]);
+                let path = dir.join(&archived_path[..]);
                 let parent = PathBuf::from(path.parent().expect("this will always have a parent"));
                 if !created.contains(&parent) {
                     std::fs::create_dir_all(path.parent().expect("this will always have a parent"))
@@ -271,13 +270,13 @@ impl Package {
                     created.insert(parent);
                 }
 
-                crate::tarball::extract_from_cache(&cache, &sri, &path, prefer_copy, *mode)?;
-            }
-            #[cfg(unix)]
-            for binpath in index.bin_paths.iter() {
-                {
-                    crate::tarball::set_bin_mode(&dir.join(&binpath[..]))?;
-                }
+                let mode = if index.bin_paths.contains(archived_path) {
+                    *mode | 0o111
+                } else {
+                    *mode
+                };
+
+                crate::tarball::extract_from_cache(&cache, &sri, &path, prefer_copy, mode)?;
             }
             Ok::<_, NassunError>(())
         })
@@ -299,12 +298,15 @@ impl fmt::Debug for Package {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn clean_from_cache(cache: &Path, sri: &Integrity, entry: cacache::Metadata) -> Result<()> {
-    let map = entry
-        .metadata
-        .as_object()
-        .expect("how is this not an object?");
-    for sri in map.values() {
-        let sri: Integrity = sri.as_str().expect("how is this not a string?").parse()?;
+    let index = rkyv::check_archived_root::<TarballIndex>(
+        entry
+            .raw_metadata
+            .as_ref()
+            .ok_or_else(|| NassunError::CacheMissingIndexError("".into()))?,
+    )
+    .map_err(|e| NassunError::DeserializeCacheError(e.to_string()))?;
+    for (sri, _) in index.files.values() {
+        let sri: Integrity = sri.as_str().parse()?;
         match cacache::remove_hash_sync(cache, &sri) {
             Ok(_) => {}
             // We don't care if the file doesn't exist.

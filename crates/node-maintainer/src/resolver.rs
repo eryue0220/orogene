@@ -21,9 +21,10 @@ use unicase::UniCase;
 use crate::error::IoContext;
 use crate::error::NodeMaintainerError;
 use crate::graph::{DepType, Edge, Graph, Node};
+use crate::maintainer::{ProgressAdded, ProgressHandler};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::META_FILE_NAME;
-use crate::{Lockfile, LockfileNode, ProgressAdded, ProgressHandler};
+use crate::{Lockfile, LockfileNode};
 
 #[derive(Debug, Clone)]
 struct NodeDependency {
@@ -115,7 +116,7 @@ impl<'a> Resolver<'a> {
                     let dep = NodeDependency {
                         name: name.clone(),
                         spec,
-                        dep_type: dep_type.clone(),
+                        dep_type,
                         node_idx,
                     };
 
@@ -155,10 +156,8 @@ impl<'a> Resolver<'a> {
 
                                 let child_idx = Self::place_child(
                                     &mut self.graph,
-                                    node_idx,
+                                    &dep,
                                     package,
-                                    &dep.spec,
-                                    dep_type,
                                     lockfile_node.into(),
                                     Some(target_path),
                                 )?;
@@ -228,10 +227,8 @@ impl<'a> Resolver<'a> {
 
                             let child_idx = Self::place_child(
                                 &mut self.graph,
-                                dep.node_idx,
+                                &dep,
                                 package.clone(),
-                                &dep.spec,
-                                dep.dep_type,
                                 manifest.clone(),
                                 None,
                             )?;
@@ -288,7 +285,7 @@ impl<'a> Resolver<'a> {
                 let edge_idx = graph.inner.add_edge(
                     dep.node_idx,
                     satisfier_idx,
-                    Edge::new(dep.spec.clone(), dep.dep_type.clone()),
+                    Edge::new(dep.spec.clone(), dep.dep_type),
                 );
                 graph[dep.node_idx]
                     .dependencies
@@ -345,15 +342,16 @@ impl<'a> Resolver<'a> {
 
     fn place_child(
         graph: &mut Graph,
-        dependent_idx: NodeIndex,
+        dep: &NodeDependency,
         package: Package,
-        requested: &PackageSpec,
-        dep_type: DepType,
         corgi: CorgiManifest,
         target_path: Option<Vec<UniCase<String>>>,
     ) -> Result<NodeIndex, NodeMaintainerError> {
-        let child_name = UniCase::new(package.name().to_string());
-        let child_node = Node::new(package, corgi, false)?;
+        let child_name = &dep.name;
+        let requested = &dep.spec;
+        let dep_type = dep.dep_type;
+        let dependent_idx = dep.node_idx;
+        let child_node = Node::new(child_name.clone(), package, corgi, false)?;
         let child_idx = graph.inner.add_node(child_node);
         graph[child_idx].root = graph.root;
         // We needed to generate the node index before setting it in the node,
@@ -375,7 +373,7 @@ impl<'a> Resolver<'a> {
         let mut target_idx = dependent_idx;
         let mut parent_idx = Some(dependent_idx);
         'outer: while let Some(curr_target_idx) = parent_idx {
-            if let Some(resolved) = graph.resolve_dep(curr_target_idx, &child_name) {
+            if let Some(resolved) = graph.resolve_dep(curr_target_idx, child_name) {
                 for edge_ref in graph.inner.edges_directed(resolved, Direction::Incoming) {
                     let (from, _) = graph
                         .inner
@@ -389,7 +387,7 @@ impl<'a> Resolver<'a> {
                 }
             }
 
-            if let Some((req, _)) = graph[curr_target_idx].dependency_reqs.get(&child_name) {
+            if let Some((req, _)) = graph[curr_target_idx].dependency_reqs.get(child_name) {
                 if !graph[child_idx].package.resolved().satisfies(req)? {
                     break 'outer;
                 }
@@ -400,7 +398,8 @@ impl<'a> Resolver<'a> {
             parent_idx = graph[curr_target_idx].parent;
 
             // Try and place it where the lockfile asks us to, but only if it
-            // makes sense for us to do so.
+            // makes sense for us to do so. If something's already there for
+            // some reason, we'll ignore placing this.
             if let Some(locked) = &target_path {
                 if locked == &graph.node_path(target_idx) {
                     break 'outer;
@@ -423,12 +422,14 @@ impl<'a> Resolver<'a> {
         {
             // Finally, we add the backlink from the parent node to the child.
             let node = &mut graph[target_idx];
-            if let Some(old) = node.children.insert(child_name, child_idx) {
+            if let Some(old) = node.children.insert(child_name.clone(), child_idx) {
                 tracing::error!(
-                    "clobbered {} with {} (requested: {}). This is a bug with the orogene resolver. Please report it.",
+                    "clobbered {} at {} with {} (requested: {} by {}). This is a bug with the orogene resolver. Please report it.",
                     graph[old].package.resolved(),
+                    graph.node_path_string(old),
                     graph[child_idx].package.resolved(),
-                    requested
+                    requested,
+                    graph.node_path_string(dependent_idx)
                 );
             }
         }

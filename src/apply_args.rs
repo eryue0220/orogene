@@ -10,6 +10,8 @@ use tracing::{Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::Url;
 
+use crate::nassun_args::NassunArgs;
+
 /// Applies the current project's requested dependencies to `node_modules/`,
 /// adding, removing, and updating dependencies as needed. This command is
 /// intended to be an idempotent way to make sure your `node_modules` is in
@@ -94,6 +96,21 @@ pub struct ApplyArgs {
     pub scoped_registries: Vec<(String, Url)>,
 
     #[arg(from_global)]
+    pub proxy: bool,
+
+    #[arg(from_global)]
+    pub proxy_url: Option<String>,
+
+    #[arg(from_global)]
+    pub no_proxy_domain: Option<String>,
+
+    #[arg(from_global)]
+    pub retries: u32,
+
+    #[arg(from_global)]
+    pub auth: Vec<(String, String, String)>,
+
+    #[arg(from_global)]
     pub json: bool,
 
     #[arg(from_global)]
@@ -104,18 +121,6 @@ pub struct ApplyArgs {
 
     #[arg(from_global)]
     pub emoji: bool,
-
-    #[arg(from_global)]
-    pub proxy: bool,
-
-    #[arg(from_global)]
-    pub proxy_url: Option<String>,
-
-    #[arg(from_global)]
-    pub no_proxy: Option<String>,
-
-    #[arg(from_global)]
-    pub fetch_retries: u32,
 }
 
 impl ApplyArgs {
@@ -128,7 +133,9 @@ impl ApplyArgs {
         }
 
         let root = &self.root;
-        let maintainer = self.resolve(manifest, self.configured_maintainer()).await?;
+        let maintainer = self
+            .resolve(manifest, self.configured_maintainer()?)
+            .await?;
 
         if !self.lockfile_only {
             self.prune(&maintainer).await?;
@@ -160,13 +167,13 @@ impl ApplyArgs {
         Ok(())
     }
 
-    fn configured_maintainer(&self) -> NodeMaintainerOptions {
+    fn configured_maintainer(&self) -> Result<NodeMaintainerOptions> {
         let root = &self.root;
+        let nassun = NassunArgs::from_apply_args(self).to_nassun()?;
         let mut nm = NodeMaintainerOptions::new();
         nm = nm
-            .registry(self.registry.clone())
+            .nassun(nassun)
             .locked(self.locked)
-            .default_tag(&self.default_tag)
             .concurrency(self.concurrency)
             .script_concurrency(self.script_concurrency)
             .root(root)
@@ -207,15 +214,11 @@ impl ApplyArgs {
                 span.pb_set_message(line);
             });
 
-        for (scope, registry) in &self.scoped_registries {
-            nm = nm.scope_registry(scope, registry.clone());
-        }
-
         if let Some(cache) = self.cache.as_deref() {
             nm = nm.cache(cache);
         }
 
-        nm
+        Ok(nm)
     }
 
     async fn resolve(
@@ -231,7 +234,7 @@ impl ApplyArgs {
                 .template(&format!(
                     "{}Resolving {}",
                     self.emoji_magnifying_glass(),
-                    "{bar:40} [{pos}/{len}] {wide_msg:.dim}"
+                    "{bar:20} [{pos}/{len}] {wide_msg:.dim}"
                 ))
                 .unwrap(),
         );
@@ -263,7 +266,7 @@ impl ApplyArgs {
                 .template(&format!(
                     "{}Pruning extraneous {}",
                     self.emoji_broom(),
-                    "{bar:40} [{pos}] {wide_msg:.dim}"
+                    "{bar:20} [{pos}] {wide_msg:.dim}"
                 ))
                 .unwrap(),
         );
@@ -294,7 +297,7 @@ impl ApplyArgs {
                 .template(&format!(
                     "{}Extracting {}",
                     self.emoji_package(),
-                    "{bar:40} [{pos}/{len}] {wide_msg:.dim}"
+                    "{bar:20} [{pos}/{len}] {wide_msg:.dim}"
                 ))
                 .unwrap(),
         );

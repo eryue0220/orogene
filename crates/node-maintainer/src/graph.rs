@@ -35,6 +35,8 @@ pub(crate) struct DemotionTarget {
 pub struct Node {
     /// Index of this Node inside its [`Graph`].
     pub(crate) idx: NodeIndex,
+    /// Name this node is written to the filesystem as.
+    pub(crate) name: UniCase<String>,
     /// Resolved [`Package`] for this Node.
     pub(crate) package: Package,
     /// Quick index back to this Node's [`Graph`]'s root Node.
@@ -53,6 +55,7 @@ pub struct Node {
 
 impl Node {
     pub(crate) fn new(
+        name: UniCase<String>,
         package: Package,
         manifest: CorgiManifest,
         is_root: bool,
@@ -89,6 +92,7 @@ impl Node {
         }
         Ok(Self {
             package,
+            name,
             idx: NodeIndex::new(0),
             root: NodeIndex::new(0),
             parent: None,
@@ -104,7 +108,7 @@ impl Node {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DepType {
     Prod,
     Dev,
@@ -291,19 +295,25 @@ impl Graph {
         let node = &self.inner[node_idx];
         let mut path = VecDeque::new();
         if node_idx != self.root {
-            path.push_front(UniCase::new(node.package.name().to_owned()));
+            path.push_front(node.name.clone());
             let mut parent = node.parent;
             while let Some(parent_idx) = parent {
                 if parent_idx == self.root {
                     break;
                 }
-                path.push_front(UniCase::new(
-                    self.inner[parent_idx].package.name().to_owned(),
-                ));
+                path.push_front(self.inner[parent_idx].name.clone());
                 parent = self.inner[parent_idx].parent;
             }
         };
         path
+    }
+
+    pub(crate) fn node_path_string(&self, node_idx: NodeIndex) -> String {
+        self.node_path(node_idx)
+            .iter()
+            .map(|x| x.to_string())
+            .collect::<Vec<_>>()
+            .join("/node_modules/")
     }
 
     /// Validate that file system hierarchy (parent -> children) is compatible

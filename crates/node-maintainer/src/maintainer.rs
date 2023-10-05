@@ -6,6 +6,7 @@ use async_std::fs;
 use nassun::client::{Nassun, NassunOpts};
 use nassun::package::Package;
 use oro_common::CorgiManifest;
+use unicase::UniCase;
 use url::Url;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -20,7 +21,10 @@ use crate::{IntoKdl, Lockfile};
 
 pub const DEFAULT_CONCURRENCY: usize = 50;
 pub const DEFAULT_SCRIPT_CONCURRENCY: usize = 6;
+
+#[cfg(not(target_arch = "wasm32"))]
 pub const META_FILE_NAME: &str = ".orogene-meta.kdl";
+#[cfg(not(target_arch = "wasm32"))]
 pub const STORE_DIR_NAME: &str = ".oro-store";
 
 pub type ProgressAdded = Arc<dyn Fn() + Send + Sync>;
@@ -32,6 +36,7 @@ pub type ScriptLineHandler = Arc<dyn Fn(&str) + Send + Sync>;
 #[derive(Clone)]
 pub struct NodeMaintainerOptions {
     nassun_opts: NassunOpts,
+    nassun: Option<Nassun>,
     concurrency: usize,
     locked: bool,
     kdl_lock: Option<Lockfile>,
@@ -136,6 +141,33 @@ impl NodeMaintainerOptions {
         self
     }
 
+    /// Sets basic auth credentials for a registry.
+    pub fn basic_auth(
+        mut self,
+        registry: Url,
+        username: impl AsRef<str>,
+        password: Option<impl AsRef<str>>,
+    ) -> Self {
+        let username = username.as_ref();
+        let password = password.map(|p| p.as_ref().to_string());
+        self.nassun_opts = self.nassun_opts.basic_auth(registry, username, password);
+        self
+    }
+
+    /// Sets bearer token credentials for a registry.
+    pub fn token_auth(mut self, registry: Url, token: impl AsRef<str>) -> Self {
+        self.nassun_opts = self.nassun_opts.token_auth(registry, token.as_ref());
+        self
+    }
+
+    /// Sets the legacy, pre-encoded auth token for a registry.
+    pub fn legacy_auth(mut self, registry: Url, legacy_auth_token: impl AsRef<str>) -> Self {
+        self.nassun_opts = self
+            .nassun_opts
+            .legacy_auth(registry, legacy_auth_token.as_ref());
+        self
+    }
+
     /// Root directory of the project.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn root(mut self, path: impl AsRef<Path>) -> Self {
@@ -147,6 +179,13 @@ impl NodeMaintainerOptions {
     /// Default dist-tag to use when resolving package versions.
     pub fn default_tag(mut self, tag: impl AsRef<str>) -> Self {
         self.nassun_opts = self.nassun_opts.default_tag(tag);
+        self
+    }
+
+    /// Provide a pre-configured Nassun instance. Using this option will
+    /// disable all other nassun-related configurations.
+    pub fn nassun(mut self, nassun: Nassun) -> Self {
+        self.nassun = Some(nassun);
         self
     }
 
@@ -169,6 +208,24 @@ impl NodeMaintainerOptions {
     /// might be useful for compatibility.
     pub fn hoisted(mut self, hoisted: bool) -> Self {
         self.hoisted = hoisted;
+        self
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn proxy(mut self, proxy: bool) -> Self {
+        self.nassun_opts = self.nassun_opts.proxy(proxy);
+        self
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn proxy_url(mut self, proxy_url: impl AsRef<str>) -> Result<Self, NodeMaintainerError> {
+        self.nassun_opts = self.nassun_opts.proxy_url(proxy_url.as_ref())?;
+        Ok(self)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn no_proxy_domain(mut self, no_proxy_domain: impl AsRef<str>) -> Self {
+        self.nassun_opts = self.nassun_opts.no_proxy_domain(no_proxy_domain.as_ref());
         self
     }
 
@@ -278,7 +335,7 @@ impl NodeMaintainerOptions {
         root: CorgiManifest,
     ) -> Result<NodeMaintainer, NodeMaintainerError> {
         let lockfile = self.get_lockfile().await?;
-        let nassun = self.nassun_opts.build();
+        let nassun = self.nassun.unwrap_or_else(|| self.nassun_opts.build());
         let root_pkg = Nassun::dummy_from_manifest(root.clone());
         let proj_root = self.root.unwrap_or_else(|| PathBuf::from("."));
         let mut resolver = Resolver {
@@ -291,10 +348,12 @@ impl NodeMaintainerOptions {
             on_resolution_added: self.on_resolution_added,
             on_resolve_progress: self.on_resolve_progress,
         };
-        let node = resolver
-            .graph
-            .inner
-            .add_node(Node::new(root_pkg, root, true)?);
+        let node = resolver.graph.inner.add_node(Node::new(
+            UniCase::new("".to_string()),
+            root_pkg,
+            root,
+            true,
+        )?);
         resolver.graph[node].root = node;
         let (graph, _actual_tree) = resolver.run_resolver(lockfile).await?;
         #[cfg(not(target_arch = "wasm32"))]
@@ -347,10 +406,12 @@ impl NodeMaintainerOptions {
             on_resolve_progress: self.on_resolve_progress,
         };
         let corgi = root_pkg.corgi_metadata().await?.manifest;
-        let node = resolver
-            .graph
-            .inner
-            .add_node(Node::new(root_pkg, corgi, true)?);
+        let node = resolver.graph.inner.add_node(Node::new(
+            UniCase::new("".to_string()),
+            root_pkg,
+            corgi,
+            true,
+        )?);
         resolver.graph[node].root = node;
         let (graph, _actual_tree) = resolver.run_resolver(lockfile).await?;
         #[cfg(not(target_arch = "wasm32"))]
@@ -387,6 +448,7 @@ impl Default for NodeMaintainerOptions {
     fn default() -> Self {
         NodeMaintainerOptions {
             nassun_opts: Default::default(),
+            nassun: None,
             concurrency: DEFAULT_CONCURRENCY,
             kdl_lock: None,
             npm_lock: None,
