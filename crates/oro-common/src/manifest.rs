@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use derive_builder::Builder;
 use indexmap::IndexMap;
-use node_semver::{Range, Version};
+use node_semver::Version;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
@@ -140,7 +140,7 @@ pub struct Manifest {
         skip_serializing_if = "HashMap::is_empty"
     )]
     #[builder(default)]
-    pub engines: HashMap<String, Range>,
+    pub engines: HashMap<String, EnginesConfig>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[builder(default)]
@@ -359,6 +359,12 @@ pub enum Repository {
     },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EnginesConfig  {
+    Str(String),
+    Vec(String),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,6 +467,25 @@ mod tests {
                 .build()
                 .unwrap()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn engines_parse() -> Result<()> {
+        let string = r#"
+        {
+            "engines": {
+                "node": ">=16"
+            }
+        }
+        "#;
+        let parsed = serde_json::from_str::<Manifest>(string).into_diagnostic()?;
+        let mut engine_settings = HashMap::new();
+        engine_settings.insert(String::from("node"), EnginesConfig::Str(String::from("^16.10.0 || ^18.12.0 || >=20.0.0")));
+        let engines = ManifestBuilder::default().engines(engine_settings).build().unwrap();
+
+        println!("engines_parse:{parsed:?}");
+        println!("engines:{engines:?}");
         Ok(())
     }
 

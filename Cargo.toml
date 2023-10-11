@@ -63,6 +63,7 @@ tracing-indicatif = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
 sysinfo = { workspace = true }
+semver = { workspace = true }
 
 [workspace]
 members = [".", "crates/*"]
@@ -160,6 +161,7 @@ which = "4.0.2"
 wiremock = "0.5.17"
 reqwest-retry = "0.2.2"
 sysinfo = "0.29.2"
+semver = "1.0.20"
 
 
 # [patch.crates-io]
